@@ -329,17 +329,29 @@ static RECT GetBtn2Rect() {
 }
 static RECT GetCloseRect() { return { WND_WIDTH - 28, 6, WND_WIDTH - 6, 28 }; }
 
+static void CenterWindow(HWND hWnd, int width, int height) {
+    HMONITOR hMon = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi = { sizeof(mi) };
+    if (GetMonitorInfoW(hMon, &mi)) {
+        int workW = mi.rcWork.right - mi.rcWork.left;
+        int workH = mi.rcWork.bottom - mi.rcWork.top;
+        int newX = mi.rcWork.left + (workW - width) / 2;
+        int newY = mi.rcWork.top + (workH - height) / 2;
+        SetWindowPos(hWnd, NULL, newX, newY, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    } else {
+        int screenW = GetSystemMetrics(SM_CXSCREEN);
+        int screenH = GetSystemMetrics(SM_CYSCREEN);
+        int newX = (screenW - width) / 2;
+        int newY = (screenH - height) / 2;
+        SetWindowPos(hWnd, NULL, newX, newY, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
 static void RenderWindow(HWND hWnd) {
     static int s_LastHeight = 0;
     int curH = g_CurrentHeight;
     if (s_LastHeight != curH) {
-        if (s_LastHeight != 0) {
-            int dy = (curH - s_LastHeight) / 2;
-            RECT r; GetWindowRect(hWnd, &r);
-            SetWindowPos(hWnd, NULL, r.left, r.top - dy, WND_WIDTH, curH, SWP_NOZORDER | SWP_NOACTIVATE);
-        } else {
-            SetWindowPos(hWnd, NULL, 0, 0, WND_WIDTH, curH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-        }
+        CenterWindow(hWnd, WND_WIDTH, curH);
         s_LastHeight = curH;
     }
 
@@ -472,14 +484,14 @@ static void RenderWindow(HWND hWnd) {
                     L"• Данный проект является на 100% БЕСПЛАТНЫМ!\n"
                     L"• Любая продажа или перепродажа софта СТРОГО ЗАПРЕЩЕНА. Если вы купили этот софт - вы были заскамлены!\n"
                     L"• Создатель и разработчик проекта: @saved_messenges\n"
-                    L"• Официальный канал: @saved_messenges\n"
+                    L"• Официальный канал: @clanpidori\n"
                     L"• Официальный репозиторий: github.com/barabulka14221422-commits/Primordial-CSGO\n"
                     L"• Не скачивайте софт со сторонних сайтов во избежание вирусов!\n"
                     L"• Инсталлер автоматически добавит рабочую папку (%APPDATA%\\primordial) в исключения Защитника Windows (Defender), чтобы антивирус не блокировал инжект чита.\n\n"
                     L"EN:\n\n"
                     L"• This software is 100% FREE! Never pay anyone for this.\n"
                     L"• Reselling is strictly prohibited! If you bought this, you got scammed!\n"
-                    L"• Developer: @saved_messenges | Telegram: @saved_messenges\n"
+                    L"• Developer: @saved_messenges | Official Channel: @clanpidori\n"
                     L"• Official GitHub: github.com/barabulka14221422-commits/Primordial-CSGO\n"
                     L"• Do not download from external sources to avoid malware!\n"
                     L"• Installer will automatically add its folder to Windows Defender exclusions to prevent false positives.";
@@ -887,10 +899,19 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
     wcex.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
     RegisterClassExW(&wcex);
 
-    int screenW = GetSystemMetrics(SM_CXSCREEN);
-    int screenH = GetSystemMetrics(SM_CYSCREEN);
-    int posX = (screenW - WND_WIDTH) / 2;
-    int posY = (screenH - 180) / 2;
+    int posX = 0, posY = 0;
+    RECT rcWork = {};
+    if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &rcWork, 0)) {
+        int workW = rcWork.right - rcWork.left;
+        int workH = rcWork.bottom - rcWork.top;
+        posX = rcWork.left + (workW - WND_WIDTH) / 2;
+        posY = rcWork.top + (workH - 130) / 2;
+    } else {
+        int screenW = GetSystemMetrics(SM_CXSCREEN);
+        int screenH = GetSystemMetrics(SM_CYSCREEN);
+        posX = (screenW - WND_WIDTH) / 2;
+        posY = (screenH - 130) / 2;
+    }
 
     HWND hWnd = CreateWindowExW(
         WS_EX_LAYERED | WS_EX_TOPMOST,
