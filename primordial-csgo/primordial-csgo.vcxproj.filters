@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="Main.cpp" />
+    <ClCompile Include="InlinedImports.cpp" />
+    <ClCompile Include="ImportTable.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="Image.hpp" />
+    <ClInclude Include="ImportTable.hpp" />
+    <ClInclude Include="InlinedAddresses.hpp" />
+    <ClInclude Include="AddressTable.hpp" />
+    <ClInclude Include="Patches.hpp" />
+    <ClInclude Include="Hooks.hpp" />
+    <ClInclude Include="InlinedImports.hpp" />
+    <ClInclude Include="Network.hpp" />
+    <ClInclude Include="mh\MinHook.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="primordial-csgo.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="primordial.bin" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+#include "resource.h"
+
+IDI_APP_ICON    ICON   "app.ico"
+IDR_PRIM_DLL    RCDATA "..\\primka\\prim.dll"
+IDR_LOADING_GIF RCDATA "..\\primka\\loading.gif"
+IDR_ERROR_PNG   RCDATA "..\\primka\\error.png"
+IDR_LOADING_MP4 RCDATA "..\\primka\\loading.mp4"
+IDR_CLICK_WAV   RCDATA "..\\primka\\click.wav"
+IDR_FIXER_EXE   RCDATA "..\\primka\\fixer.exe"

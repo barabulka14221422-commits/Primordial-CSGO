@@ -1,0 +1,6 @@
+#include "resource.h"
+
+IDI_APP_ICON    ICON   "..\\app.ico"
+
+IDR_SOUND_SUCCESS WAVE "primka\\\\success.wav"
+IDR_SOUND_CLICK WAVE "primka\\\\click.wav"
