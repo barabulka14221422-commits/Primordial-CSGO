@@ -348,12 +348,7 @@ static void CenterWindow(HWND hWnd, int width, int height) {
 }
 
 static void RenderWindow(HWND hWnd) {
-    static int s_LastHeight = 0;
     int curH = g_CurrentHeight;
-    if (s_LastHeight != curH) {
-        CenterWindow(hWnd, WND_WIDTH, curH);
-        s_LastHeight = curH;
-    }
 
     HDC hdcScreen = GetDC(NULL);
     HDC hdcMem = CreateCompatibleDC(hdcScreen);
@@ -630,12 +625,31 @@ static void RenderWindow(HWND hWnd) {
     POINT ptSrc = { 0, 0 };
     SIZE size = { WND_WIDTH, curH };
     BLENDFUNCTION blend = { AC_SRC_OVER, 0, (BYTE)g_WindowAlpha, AC_SRC_ALPHA };
-    
+
     POINT ptDst;
-    RECT wRect;
-    GetWindowRect(hWnd, &wRect);
-    ptDst.x = wRect.left;
-    ptDst.y = wRect.top;
+    static int s_LastHeight = 0;
+    if (s_LastHeight != curH) {
+        CenterWindow(hWnd, WND_WIDTH, curH);
+        s_LastHeight = curH;
+        HMONITOR hMon = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        if (GetMonitorInfoW(hMon, &mi)) {
+            int workW = mi.rcWork.right - mi.rcWork.left;
+            int workH = mi.rcWork.bottom - mi.rcWork.top;
+            ptDst.x = mi.rcWork.left + (workW - WND_WIDTH) / 2;
+            ptDst.y = mi.rcWork.top + (workH - curH) / 2;
+        } else {
+            RECT wRect;
+            GetWindowRect(hWnd, &wRect);
+            ptDst.x = wRect.left;
+            ptDst.y = wRect.top;
+        }
+    } else {
+        RECT wRect;
+        GetWindowRect(hWnd, &wRect);
+        ptDst.x = wRect.left;
+        ptDst.y = wRect.top;
+    }
 
     UpdateLayeredWindow(hWnd, hdcScreen, &ptDst, &size, hdcMem, &ptSrc, 0, &blend, ULW_ALPHA);
 
@@ -899,18 +913,26 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
     wcex.hIconSm = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
     RegisterClassExW(&wcex);
 
+    wchar_t appData[MAX_PATH];
+    std::wstring installDir;
+    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData))) {
+        installDir = std::wstring(appData) + L"\\primordial";
+    }
+    std::wstring installedLoaderPath = installDir + L"\\Primordial.exe";
+    int initH = std::filesystem::exists(installedLoaderPath) ? 200 : 455;
+
     int posX = 0, posY = 0;
     RECT rcWork = {};
     if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &rcWork, 0)) {
         int workW = rcWork.right - rcWork.left;
         int workH = rcWork.bottom - rcWork.top;
         posX = rcWork.left + (workW - WND_WIDTH) / 2;
-        posY = rcWork.top + (workH - 130) / 2;
+        posY = rcWork.top + (workH - initH) / 2;
     } else {
         int screenW = GetSystemMetrics(SM_CXSCREEN);
         int screenH = GetSystemMetrics(SM_CYSCREEN);
         posX = (screenW - WND_WIDTH) / 2;
-        posY = (screenH - 130) / 2;
+        posY = (screenH - initH) / 2;
     }
 
     HWND hWnd = CreateWindowExW(
@@ -918,7 +940,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
         L"PrimordialInstallerClass",
         L"primordial setup",
         WS_POPUP | WS_VISIBLE,
-        posX, posY, WND_WIDTH, 130,
+        posX, posY, WND_WIDTH, initH,
         NULL, NULL, hInstance, NULL
     );
 

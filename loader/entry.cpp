@@ -942,10 +942,32 @@ static std::string DetectSteamPath() {
     return "";
 }
 
+static DWORD GetActiveSteamUser() {
+    HKEY hKey;
+    DWORD activeUser = 0;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Valve\\Steam\\ActiveProcess", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD size = sizeof(activeUser);
+        DWORD type = REG_DWORD;
+        RegQueryValueExW(hKey, L"ActiveUser", NULL, &type, (LPBYTE)&activeUser, &size);
+        RegCloseKey(hKey);
+    }
+    return activeUser;
+}
+
 static std::vector<std::string> FindLocalConfigs(const std::string& steamPath) {
     std::vector<std::string> result;
     std::filesystem::path userdata = std::filesystem::path(steamPath) / "userdata";
     if (!std::filesystem::exists(userdata)) return result;
+
+    DWORD activeUser = GetActiveSteamUser();
+    if (activeUser != 0) {
+        std::filesystem::path activeCfg = userdata / std::to_string(activeUser) / "config" / "localconfig.vdf";
+        if (std::filesystem::exists(activeCfg)) {
+            result.push_back(activeCfg.string());
+            return result;
+        }
+    }
+
     try {
         for (auto& profileDir : std::filesystem::directory_iterator(userdata)) {
             if (!profileDir.is_directory()) continue;
@@ -1020,10 +1042,32 @@ static std::pair<size_t, size_t> FindAppsBlock(std::string& content) {
     return {s5, e5};
 }
 
+static bool CheckSingleAppHasInsecure(const std::string& content, const std::string& appId) {
+    std::string temp = content;
+    auto [appsOpen, appsClose] = FindAppsBlock(temp);
+    if (appsOpen == std::string::npos) return false;
+    auto [aOpen, aClose] = FindChildBlock(content, appId, appsOpen, appsClose);
+    if (aOpen == std::string::npos) return false;
+
+    size_t loKeyPos = FindQuotedKeyCI(content, "LaunchOptions", aOpen, aClose);
+    if (loKeyPos == std::string::npos || loKeyPos >= aClose) return false;
+
+    size_t keyCloseQuote = content.find('"', loKeyPos + 1);
+    if (keyCloseQuote == std::string::npos) return false;
+
+    size_t valOpenQuote = content.find('"', keyCloseQuote + 1);
+    if (valOpenQuote == std::string::npos || valOpenQuote >= aClose) return false;
+
+    size_t valCloseQuote = content.find('"', valOpenQuote + 1);
+    if (valCloseQuote == std::string::npos || valCloseQuote > aClose) return false;
+
+    std::string val = content.substr(valOpenQuote + 1, valCloseQuote - valOpenQuote - 1);
+    return (val.find("-insecure") != std::string::npos);
+}
+
 static bool CheckLaunchOptionsAlreadySet(const std::string& steamPath, const std::string& appId) {
     auto configs = FindLocalConfigs(steamPath);
-    if (configs.empty()) return false;
-    bool foundAnyConfig = false;
+    if (configs.empty()) return true;
     for (auto& path : configs) {
         std::ifstream f(path, std::ios::binary);
         if (!f.is_open()) continue;
@@ -1031,30 +1075,13 @@ static bool CheckLaunchOptionsAlreadySet(const std::string& steamPath, const std
         f.close();
         if (content.size() < 100) continue;
 
-        foundAnyConfig = true;
-        auto [appsOpen, appsClose] = FindAppsBlock(content);
-        if (appsOpen == std::string::npos) return false;
-        auto [aOpen, aClose] = FindChildBlock(content, appId, appsOpen, appsClose);
-        if (aOpen == std::string::npos) return false;
-
-        size_t loKeyPos = FindQuotedKeyCI(content, "LaunchOptions", aOpen, aClose);
-        if (loKeyPos == std::string::npos || loKeyPos >= aClose) return false;
-
-        size_t keyCloseQuote = content.find('"', loKeyPos + 1);
-        if (keyCloseQuote == std::string::npos) return false;
-
-        size_t valOpenQuote = content.find('"', keyCloseQuote + 1);
-        if (valOpenQuote == std::string::npos || valOpenQuote >= aClose) return false;
-
-        size_t valCloseQuote = content.find('"', valOpenQuote + 1);
-        if (valCloseQuote == std::string::npos || valCloseQuote > aClose) return false;
-
-        std::string val = content.substr(valOpenQuote + 1, valCloseQuote - valOpenQuote - 1);
-        if (val.find("-insecure") == std::string::npos) {
-            return false;
+        if (CheckSingleAppHasInsecure(content, appId) ||
+            CheckSingleAppHasInsecure(content, "730") ||
+            CheckSingleAppHasInsecure(content, "4465480")) {
+            return true;
         }
     }
-    return foundAnyConfig;
+    return false;
 }
 
 static bool SetLaunchOptionsInVdf(const std::string& steamPath, const std::string& appId, const std::string& targetOpts) {
@@ -1224,7 +1251,9 @@ void StartLoaderSequence(HWND hWnd)
         g_State = STATE_WAITING_MANUAL;
 
         // Auto-configure Steam VDF launch options ONLY if csgo/legacy path was detected
-        if (g_DetectionMode != MODE_NONE) {
+        static bool s_SteamRestartAttempted = false;
+        DWORD csgoRunningPid = GetProcessIdByName(L"csgo.exe");
+        if (g_DetectionMode != MODE_NONE && !s_SteamRestartAttempted && csgoRunningPid == 0) {
             std::string steamPath = DetectSteamPath();
             std::string appId = (g_DetectionMode == MODE_LEGACY_AUTO) ? "4465480" : "730";
             std::string launchOpts = "-insecure";
@@ -1232,11 +1261,13 @@ void StartLoaderSequence(HWND hWnd)
             if (!steamPath.empty()) {
                 bool alreadyHasInsecure = CheckLaunchOptionsAlreadySet(steamPath, appId);
                 if (!alreadyHasInsecure) {
+                    s_SteamRestartAttempted = true;
                     g_StatusMessage = L"Waiting..";
                     InvalidateRect(hWnd, NULL, FALSE);
 
                     ForceKillSteam();
-                    SetLaunchOptionsInVdf(steamPath, appId, launchOpts);
+                    SetLaunchOptionsInVdf(steamPath, "730", launchOpts);
+                    SetLaunchOptionsInVdf(steamPath, "4465480", launchOpts);
                     StartSteam(steamPath);
 
                     // Wait for Steam process to return
