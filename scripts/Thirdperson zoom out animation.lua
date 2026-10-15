@@ -1,6 +1,7 @@
 -- ============================================================================
 -- PRIMORDIAL CS:GO THIRDPERSON ZOOM OUT ANIMATION
 -- Fixed by @saved_messenges for @clanpidori
+-- Crash-proof: Zero execution in main menu!
 -- ============================================================================
 
 local third_p_dis = 0
@@ -15,6 +16,10 @@ cus_trd_p:set(160)
 trd_p_out:set(10)
 
 local function trd_person() 
+    if not engine.is_connected() or not engine.is_in_game() then return end
+    local lp = entity_list.get_local_player()
+    if not lp or not lp:is_alive() then return end
+
     local fade_rate = trd_p_out:get() * 0.1
     if fade_rate <= 0.001 then fade_rate = 1.0 end
     local fade_time = (10 / fade_rate) * global_vars.frame_time()

@@ -8,6 +8,7 @@
 --   Worldmodel: models/weapons/k31/w_octaneheirloom.mdl
 -- Materials:    materials/models/K31/ (octane_heirloom, octane_heirloom_glass)
 -- Sounds:       sound/weapons/custom_weapon/k31/octane/ (8 custom wav sounds)
+-- Crash-proof: Safe in main menu, no null pointer dereferences.
 -- ============================================================================
 
 local ffi = require("ffi")
@@ -41,26 +42,34 @@ end
 local SetModelIndex = nil
 pcall(function()
     SetModelIndex = function(instance, model_idx)
-        if not instance then return end
-        local fn = ffi.cast("void(__thiscall*)(void*,int)", ffi.cast("void***", instance)[0][75])
+        if not instance or instance == ffi.NULL then return end
+        local raw = ffi.cast("void***", instance)
+        if raw == nil or raw == ffi.NULL or raw[0] == nil then return end
+        local fn = ffi.cast("void(__thiscall*)(void*,int)", raw[0][75])
         if fn then fn(instance, model_idx) end
     end
 end)
 
 local function get_string_table(name)
-    if not raw_string_tables then return nil end
+    if not engine.is_connected() or not engine.is_in_game() then return nil end
+    if not raw_string_tables or raw_string_tables == ffi.NULL then return nil end
     local ok, tbl = pcall(function()
+        if raw_string_tables[0] == nil then return nil end
         local find_table_fn = ffi.cast("void*(__thiscall*)(void*, const char*)", raw_string_tables[0][3])
+        if not find_table_fn then return nil end
         return find_table_fn(raw_string_tables, name)
     end)
-    return (ok and tbl) and tbl or nil
+    return (ok and tbl and tbl ~= ffi.NULL) and tbl or nil
 end
 
 local function add_to_string_table(tbl, str)
-    if not tbl or not str or str == "" then return -1 end
+    if not engine.is_connected() or not engine.is_in_game() then return -1 end
+    if not tbl or tbl == ffi.NULL or not str or str == "" then return -1 end
     local ok, res = pcall(function()
         local raw_tbl = ffi.cast("void***", tbl)
+        if raw_tbl == nil or raw_tbl == ffi.NULL or raw_tbl[0] == nil then return -1 end
         local add_str_fn = ffi.cast("int(__thiscall*)(void*, bool, const char*, int, const void*)", raw_tbl[0][8])
+        if not add_str_fn then return -1 end
         return add_str_fn(tbl, false, str, -1, nil)
     end)
     return ok and res or -1
@@ -84,6 +93,7 @@ local OCTANE_SOUNDS = {
 }
 
 local function precache_model_universal(path)
+    if not engine.is_connected() or not engine.is_in_game() then return nil end
     if not path or #path <= 3 then return nil end
     local norm = string.gsub(path, "\\", "/")
     local idx = nil
@@ -122,6 +132,7 @@ end
 
 local sounds_precached = false
 local function precache_all_sounds()
+    if not engine.is_connected() or not engine.is_in_game() then return end
     if sounds_precached then return end
     pcall(function()
         local snd_tbl = get_string_table("soundprecache")
@@ -135,6 +146,7 @@ local function precache_all_sounds()
 end
 
 local function get_knife_indices()
+    if not engine.is_connected() or not engine.is_in_game() then return nil, nil end
     if not knife_idx or knife_idx <= 0 then
         knife_idx = precache_model_universal(KNIFE_MODEL)
     end
@@ -156,6 +168,7 @@ local function is_knife_def(d)
 end
 
 local function get_active_weapon(lp)
+    if not lp then return nil end
     local w = nil
     pcall(function()
         if lp.get_active_weapon then w = lp:get_active_weapon() end
@@ -168,6 +181,7 @@ local function get_active_weapon(lp)
 end
 
 local function active_weapon_is_knife(lp)
+    if not lp then return false, nil end
     local w = get_active_weapon(lp)
     if not w then return false, nil end
     local is_k = false
@@ -190,9 +204,9 @@ end
 local last_weapon_handle = nil
 local last_is_knife = false
 local last_attack_time = 0
-local last_inspect_time = 0
 
 local function play_custom_knife_sound(sound_name)
+    if not engine.is_connected() or not engine.is_in_game() then return end
     pcall(function()
         if engine.play_sound then
             engine.play_sound(sound_name)
@@ -203,6 +217,8 @@ local function play_custom_knife_sound(sound_name)
 end
 
 local function apply_knife_model(lp, w, model_idx, world_idx)
+    if not lp or not w or not model_idx or model_idx <= 0 then return end
+
     -- 1. Apply to Viewmodel
     local vm_ent = nil
     pcall(function()
@@ -217,51 +233,54 @@ local function apply_knife_model(lp, w, model_idx, world_idx)
                 local idx = vm_ent:get_index()
                 if idx then
                     local ptr = ffi.cast("void***", get_client_entity(entity_list_raw, idx))
-                    if ptr then SetModelIndex(ptr, model_idx) end
+                    if ptr and ptr ~= ffi.NULL and ptr[0] ~= nil then SetModelIndex(ptr, model_idx) end
                 end
             end
         end)
     end
 
     -- 2. Apply to Weapon entity
-    if w then
-        pcall(function() w:set_prop("m_nModelIndex", model_idx) end)
-        pcall(function() w:set_prop("m_iViewModelIndex", model_idx) end)
-        pcall(function()
-            if entity_list_raw and get_client_entity and SetModelIndex then
-                local idx = w:get_index()
-                if idx then
-                    local ptr = ffi.cast("void***", get_client_entity(entity_list_raw, idx))
-                    if ptr then SetModelIndex(ptr, model_idx) end
-                end
+    pcall(function() w:set_prop("m_nModelIndex", model_idx) end)
+    pcall(function() w:set_prop("m_iViewModelIndex", model_idx) end)
+    pcall(function()
+        if entity_list_raw and get_client_entity and SetModelIndex then
+            local idx = w:get_index()
+            if idx then
+                local ptr = ffi.cast("void***", get_client_entity(entity_list_raw, idx))
+                if ptr and ptr ~= ffi.NULL and ptr[0] ~= nil then SetModelIndex(ptr, model_idx) end
             end
-        end)
+        end
+    end)
 
-        -- 3. Apply World Model for Thirdperson
-        if world_idx then
-            pcall(function() w:set_prop("m_iWorldModelIndex", world_idx) end)
-            pcall(function()
-                local h_wm = w:get_prop("m_hWeaponWorldModel")
-                if h_wm then
-                    local wm_ent = entity_list.get_entity(h_wm)
-                    if wm_ent then
-                        wm_ent:set_prop("m_nModelIndex", world_idx)
-                        if entity_list_raw and get_client_entity and SetModelIndex then
-                            local wmidx = wm_ent:get_index()
-                            if wmidx then
-                                local wmptr = ffi.cast("void***", get_client_entity(entity_list_raw, wmidx))
-                                if wmptr then SetModelIndex(wmptr, world_idx) end
-                            end
+    -- 3. Apply World Model for Thirdperson
+    if world_idx and world_idx > 0 then
+        pcall(function() w:set_prop("m_iWorldModelIndex", world_idx) end)
+        pcall(function()
+            local h_wm = w:get_prop("m_hWeaponWorldModel")
+            if h_wm then
+                local wm_ent = entity_list.get_entity(h_wm)
+                if wm_ent then
+                    wm_ent:set_prop("m_nModelIndex", world_idx)
+                    if entity_list_raw and get_client_entity and SetModelIndex then
+                        local wmidx = wm_ent:get_index()
+                        if wmidx then
+                            local wmptr = ffi.cast("void***", get_client_entity(entity_list_raw, wmidx))
+                            if wmptr and wmptr ~= ffi.NULL and wmptr[0] ~= nil then SetModelIndex(wmptr, world_idx) end
                         end
                     end
                 end
-            end)
-        end
+            end
+        end)
     end
 end
 
 local function run()
-    if not engine.is_connected() or not engine.is_in_game() then return end
+    if not engine.is_connected() or not engine.is_in_game() then
+        last_is_knife = false
+        last_weapon_handle = nil
+        return
+    end
+
     local lp = entity_list.get_local_player()
     if not lp or not lp:is_alive() then
         last_is_knife = false
@@ -283,17 +302,21 @@ local function run()
     if not is_k then return end
 
     local v_idx, w_idx = get_knife_indices()
-    if not v_idx then return end
+    if not v_idx or v_idx <= 0 then return end
 
     apply_knife_model(lp, w, v_idx, w_idx)
 end
 
 -- Sound triggers for user actions (attack / inspect)
 local function on_setup_command(cmd)
+    if not engine.is_connected() or not engine.is_in_game() then return end
     if not last_is_knife then return end
+
+    local lp = entity_list.get_local_player()
+    if not lp or not lp:is_alive() then return end
+
     local now = global_vars.real_time()
 
-    -- Attack swing sound trigger
     local is_attacking = false
     pcall(function()
         if cmd.has_button then

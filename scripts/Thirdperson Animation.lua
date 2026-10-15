@@ -1,6 +1,7 @@
 -- ============================================================================
 -- PRIMORDIAL CS:GO THIRDPERSON ANIMATION
 -- Fixed by @saved_messenges for @clanpidori
+-- Crash-proof: Zero execution in main menu!
 -- ============================================================================
 
 local alive_thirdperson = menu.find("visuals","other","thirdperson","enable")
@@ -22,6 +23,10 @@ end
 
 local animation_amt = 0
 local on_thirdperson_animation = function()
+    if not engine.is_connected() or not engine.is_in_game() then return end
+    local lp = entity_list.get_local_player()
+    if not lp or not lp:is_alive() then return end
+
     if thirdperson_animation:get() then
         local is_enabled = false
         if alive_thirdperson then
